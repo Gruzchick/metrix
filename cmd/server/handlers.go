@@ -2,10 +2,70 @@ package main
 
 import (
 	"errors"
+	"github.com/go-chi/chi/v5"
 	"net/http"
 	"strconv"
 	"strings"
 )
+
+func getAllMetricsHandler(res http.ResponseWriter, req *http.Request) {
+	var html = `<html>
+    <head>
+    <title></title>
+    </head>
+    <body>
+        <h2>Metrics<h2>`
+
+	if len(store.gauges) != 0 {
+		html += "<h3>gauges</h3>"
+
+		for k, v := range store.gauges {
+			html += "<div>" + "<span>" + k + ": " + "</span>" + "<span>" + strconv.FormatFloat(v, 'f', -1, 64) + "</span>" + "</div>"
+		}
+
+	}
+	if len(store.counters) != 0 {
+		html += "<h3>counters</h3>"
+
+		for k, v := range store.counters {
+			html += "<div>" + "<span>" + k + ": " + "</span>" + "<span>" + strconv.FormatInt(v, 10) + "</span>" + "</div>"
+		}
+
+	}
+
+	html += "</body></html>"
+
+	res.Header().Set("content-type", "text/html")
+	res.WriteHeader(http.StatusOK)
+	res.Write([]byte(html))
+}
+
+func getMetricValueHandler(res http.ResponseWriter, req *http.Request) {
+	metricType := chi.URLParam(req, "metricType")
+	metricName := chi.URLParam(req, "metricName")
+
+	val, err := getValueAsString(metricType, metricName)
+	if err != nil {
+		http.NotFound(res, req)
+		return
+	}
+
+	res.Header().Set("content-type", "text/plain")
+	res.WriteHeader(http.StatusOK)
+	res.Write([]byte(val))
+}
+
+type MetricsUpdatingURLPathParams struct {
+	action      string
+	metricType  string
+	metricName  string
+	metricValue string
+}
+
+type ParsingURLPathParamsError struct {
+	error error
+	code  int
+}
 
 func updateMetricsHandler(res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
