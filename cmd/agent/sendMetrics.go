@@ -8,12 +8,12 @@ import (
 
 func sendMetrics() {
 	for {
-		time.Sleep(time.Duration(*reportInterval) * time.Second)
+		time.Sleep(time.Duration(reportInterval) * time.Second)
 
 		metrics := <-metricsChan
 
 		for k, v := range metrics {
-			resp, err := http.Post("http://"+*host+"/update/"+v.metricType+"/"+k+"/"+v.metricValue, "text/plain", nil)
+			resp, err := http.Post("http://"+host+"/update/"+v.metricType+"/"+k+"/"+v.metricValue, "text/plain", nil)
 			if err != nil {
 				fmt.Println(err)
 			}

@@ -129,7 +129,7 @@ func collectMetrics() {
 
 		metricsChan <- newMetrics
 
-		time.Sleep(time.Duration(*pollInterval) * time.Second)
+		time.Sleep(time.Duration(pollInterval) * time.Second)
 	}
 
 }
