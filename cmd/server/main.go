@@ -4,6 +4,7 @@ import (
 	"flag"
 	"github.com/caarlos0/env/v9"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 	"log"
 	"net/http"
 	"time"
@@ -18,11 +19,22 @@ type Config struct {
 }
 
 func main() {
+	// создаём предустановленный регистратор zap
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		// вызываем панику, если ошибка
+		panic(err)
+	}
+	defer logger.Sync()
+
+	// делаем регистратор SugaredLogger
+	sugar = *logger.Sugar()
+
 	flag.Parse()
 
 	var cfg Config
 
-	err := env.Parse(&cfg)
+	err = env.Parse(&cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -35,10 +47,10 @@ func main() {
 
 	router := chi.NewRouter()
 
-	router.Get("/", getAllMetricsHandler)
-	router.Get("/value/{metricType}/{metricName}", getMetricValueHandler)
+	router.Get("/", withLogging(getAllMetricsHandler))
+	router.Get("/value/{metricType}/{metricName}", withLogging(getMetricValueHandler))
 
-	router.Post("/update/{metricType}/{metricName}/{metricValue}", updateMetricsHandler)
+	router.Post("/update/{metricType}/{metricName}/{metricValue}", withLogging(updateMetricsHandler))
 
 	s := &http.Server{
 		Addr:           host,
