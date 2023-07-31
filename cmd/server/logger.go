@@ -39,23 +39,25 @@ func withLogging(h http.HandlerFunc) http.HandlerFunc {
 			status: 0,
 			size:   0,
 		}
+
 		lw := loggingResponseWriter{
 			ResponseWriter: w,
 			responseData:   responseData,
 		}
+
 		h.ServeHTTP(&lw, r)
 
 		duration := time.Since(start)
 
 		sugar.Info(
-			"uri", r.RequestURI,
-			"method", r.Method,
-			"duration", duration,
+			"uri ", r.RequestURI,
+			" method ", r.Method,
+			" duration ", duration,
 		)
 
 		sugar.Info(
-			"status", responseData.status,
-			"size", responseData.size,
+			"status ", responseData.status,
+			" size ", responseData.size,
 		)
 	}
 	return logFn

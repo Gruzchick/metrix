@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"github.com/go-chi/chi/v5"
 	"net/http"
@@ -40,6 +42,59 @@ func getAllMetricsHandler(res http.ResponseWriter, req *http.Request) {
 	res.Write([]byte(html))
 }
 
+type GetMetricValueHandlerRequest struct {
+	ID    string `json:"id"`
+	MType string `json:"type"`
+}
+
+func getMetricValueHandlerByPOST(res http.ResponseWriter, req *http.Request) {
+	var requestBody GetMetricValueHandlerRequest
+	var buf bytes.Buffer
+
+	_, err := buf.ReadFrom(req.Body)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err = json.Unmarshal(buf.Bytes(), &requestBody); err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	metricValue, err := getValueAsString(requestBody.MType, requestBody.ID)
+	if err != nil {
+		http.NotFound(res, req)
+		return
+	}
+
+	responseBody := Metrics{
+		ID:    requestBody.ID,
+		MType: requestBody.MType,
+	}
+
+	switch {
+	case requestBody.MType == gaugeTypeName:
+		v, _ := strconv.ParseFloat(metricValue, 64)
+
+		responseBody.Value = &v
+	case requestBody.MType == counterTypeName:
+		d, _ := strconv.ParseInt(metricValue, 10, 64)
+
+		responseBody.Delta = &d
+	}
+
+	resp, err := json.Marshal(responseBody)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	res.Header().Set("content-type", "application/json")
+	res.WriteHeader(http.StatusOK)
+	res.Write(resp)
+}
+
 func getMetricValueHandler(res http.ResponseWriter, req *http.Request) {
 	metricType := chi.URLParam(req, "metricType")
 	metricName := chi.URLParam(req, "metricName")
@@ -53,6 +108,61 @@ func getMetricValueHandler(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("content-type", "text/plain")
 	res.WriteHeader(http.StatusOK)
 	res.Write([]byte(val))
+}
+
+type Metrics struct {
+	ID    string   `json:"id"`
+	MType string   `json:"type"`
+	Delta *int64   `json:"delta,omitempty"`
+	Value *float64 `json:"value,omitempty"`
+}
+
+func updateMetricsByJSONHandler(res http.ResponseWriter, req *http.Request) {
+	var parsedBody Metrics
+	var buf bytes.Buffer
+
+	_, err := buf.ReadFrom(req.Body)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err = json.Unmarshal(buf.Bytes(), &parsedBody); err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if parsedBody.ID == "" {
+		http.Error(res, "не указано имя метрики", http.StatusNotFound)
+		return
+	}
+
+	switch {
+	case parsedBody.MType == gaugeTypeName:
+
+		store.gauges[parsedBody.ID] = *parsedBody.Value
+
+		value := store.gauges[parsedBody.ID]
+
+		parsedBody.Value = &value
+	case parsedBody.MType == counterTypeName:
+
+		store.counters[parsedBody.ID] = store.counters[parsedBody.ID] + *parsedBody.Delta
+
+		delta := store.counters[parsedBody.ID]
+
+		parsedBody.Delta = &delta
+	}
+
+	resp, err := json.Marshal(parsedBody)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	res.Header().Set("content-type", "application/json")
+	res.WriteHeader(http.StatusOK)
+	res.Write(resp)
 }
 
 type MetricsUpdatingURLPathParams struct {

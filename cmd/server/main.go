@@ -48,8 +48,10 @@ func main() {
 	router := chi.NewRouter()
 
 	router.Get("/", withLogging(getAllMetricsHandler))
+	router.Post("/value/", withLogging(getMetricValueHandlerByPOST))
 	router.Get("/value/{metricType}/{metricName}", withLogging(getMetricValueHandler))
 
+	router.Post("/update/", withLogging(updateMetricsByJSONHandler))
 	router.Post("/update/{metricType}/{metricName}/{metricValue}", withLogging(updateMetricsHandler))
 
 	s := &http.Server{
