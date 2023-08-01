@@ -21,18 +21,18 @@ func getAllMetricsHandler(res http.ResponseWriter, req *http.Request) {
     <body>
         <h2>Metrics<h2>`
 
-	if len(store.gauges) != 0 {
-		html += "<h3>gauges</h3>"
+	if len(store.Gauges) != 0 {
+		html += "<h3>Gauges</h3>"
 
-		for k, v := range store.gauges {
+		for k, v := range store.Gauges {
 			html += "<div>" + "<span>" + k + ": " + "</span>" + "<span>" + strconv.FormatFloat(v, 'f', -1, 64) + "</span>" + "</div>"
 		}
 
 	}
-	if len(store.counters) != 0 {
-		html += "<h3>counters</h3>"
+	if len(store.Counters) != 0 {
+		html += "<h3>Counters</h3>"
 
-		for k, v := range store.counters {
+		for k, v := range store.Counters {
 			html += "<div>" + "<span>" + k + ": " + "</span>" + "<span>" + strconv.FormatInt(v, 10) + "</span>" + "</div>"
 		}
 
@@ -165,16 +165,16 @@ func updateMetricsByJSONHandler(res http.ResponseWriter, req *http.Request) {
 	switch {
 	case parsedBody.MType == gaugeTypeName:
 
-		store.gauges[parsedBody.ID] = *parsedBody.Value
+		store.Gauges[parsedBody.ID] = *parsedBody.Value
 
-		value := store.gauges[parsedBody.ID]
+		value := store.Gauges[parsedBody.ID]
 
 		parsedBody.Value = &value
 	case parsedBody.MType == counterTypeName:
 
-		store.counters[parsedBody.ID] = store.counters[parsedBody.ID] + *parsedBody.Delta
+		store.Counters[parsedBody.ID] = store.Counters[parsedBody.ID] + *parsedBody.Delta
 
-		delta := store.counters[parsedBody.ID]
+		delta := store.Counters[parsedBody.ID]
 
 		parsedBody.Delta = &delta
 	}
@@ -188,6 +188,10 @@ func updateMetricsByJSONHandler(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("content-type", "application/json")
 	res.WriteHeader(http.StatusOK)
 	res.Write(resp)
+
+	if storeInterval == 0 {
+		writeStoreToFileByInterval(storeInterval)
+	}
 }
 
 type MetricsUpdatingURLPathParams struct {
@@ -224,7 +228,7 @@ func updateMetricsHandler(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		store.gauges[parsedURLPathParams.metricName] = metricValue
+		store.Gauges[parsedURLPathParams.metricName] = metricValue
 	case parsedURLPathParams.metricType == counterTypeName:
 		metricValue, err := strconv.ParseInt(parsedURLPathParams.metricValue, 10, 64)
 
@@ -233,11 +237,15 @@ func updateMetricsHandler(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		store.counters[parsedURLPathParams.metricName] = store.counters[parsedURLPathParams.metricName] + metricValue
+		store.Counters[parsedURLPathParams.metricName] = store.Counters[parsedURLPathParams.metricName] + metricValue
 	}
 
 	res.Header().Set("content-type", "application/json")
 	res.WriteHeader(http.StatusOK)
+
+	if storeInterval == 0 {
+		writeStoreToFileByInterval(storeInterval)
+	}
 }
 
 func getParsedMetricsUpdatingURLPathParams(path string) (*MetricsUpdatingURLPathParams, *ParsingURLPathParamsError) {
