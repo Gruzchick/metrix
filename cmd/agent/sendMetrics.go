@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,6 +23,8 @@ type SendMetricsGaugeRequest struct {
 }
 
 func sendMetrics() {
+	client := &http.Client{}
+
 	for {
 		time.Sleep(time.Duration(reportInterval) * time.Second)
 
@@ -56,7 +59,31 @@ func sendMetrics() {
 				fmt.Println(err)
 			}
 
-			resp, err := http.Post("http://"+host+"/update/", "application/json", bytes.NewBuffer(jsonBody))
+			fmt.Println("jsonBody.len ", len(jsonBody))
+
+			var compressedBodyBuffer bytes.Buffer
+
+			gz := gzip.NewWriter(&compressedBodyBuffer)
+
+			_, err = gz.Write(jsonBody)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+
+			gz.Close()
+
+			fmt.Println(len(compressedBodyBuffer.Bytes()))
+
+			request, err := http.NewRequest(http.MethodPost, "http://"+host+"/update/", bytes.NewBuffer(compressedBodyBuffer.Bytes()))
+			if err != nil {
+				panic(err)
+			}
+
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Content-Encoding", "gzip")
+
+			resp, err := client.Do(request)
 			if err != nil {
 				fmt.Println(err)
 			} else {

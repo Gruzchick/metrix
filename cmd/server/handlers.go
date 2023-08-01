@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/go-chi/chi/v5"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -119,15 +122,37 @@ type Metrics struct {
 
 func updateMetricsByJSONHandler(res http.ResponseWriter, req *http.Request) {
 	var parsedBody Metrics
-	var buf bytes.Buffer
 
-	_, err := buf.ReadFrom(req.Body)
-	if err != nil {
-		http.Error(res, err.Error(), http.StatusBadRequest)
-		return
+	var bodyBytes []byte
+
+	if strings.Contains(req.Header.Get("Content-Encoding"), "gzip") {
+		gz, err := gzip.NewReader(req.Body)
+		if err != nil {
+			http.Error(res, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		defer gz.Close()
+
+		bodyBytes, err = io.ReadAll(gz)
+		if err != nil {
+			fmt.Println(err.Error())
+			http.Error(res, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		var buf bytes.Buffer
+
+		_, err := buf.ReadFrom(req.Body)
+		if err != nil {
+			http.Error(res, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		bodyBytes = buf.Bytes()
 	}
 
-	if err = json.Unmarshal(buf.Bytes(), &parsedBody); err != nil {
+	if err := json.Unmarshal(bodyBytes, &parsedBody); err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
