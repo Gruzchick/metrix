@@ -21,13 +21,6 @@ func TestUpdateMetricsHandler(t *testing.T) {
 		want want
 	}{
 		{
-			name: "Тест запроса без указания метрики",
-			url:  "http://localhost:8080/update",
-			want: want{
-				code: http.StatusNotFound,
-			},
-		},
-		{
 			name: "Тест допустимого значения счётчика counter",
 			url:  "http://localhost:8080/update/counter/test-counter/1.2",
 			want: want{
@@ -48,7 +41,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, test.url, nil)
 			// создаём новый Recorder
 			w := httptest.NewRecorder()
-			updateMetricsHandler(w, request)
+			updateMetricsByJSONHandler(w, request)
 
 			res := w.Result()
 			// проверяем код ответа

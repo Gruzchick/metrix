@@ -109,6 +109,7 @@ func collectMetrics() {
 			metricType:  gaugeTypeName,
 			metricValue: strconv.FormatUint(m.StackSys, 10),
 		}
+
 		newMetrics["Sys"] = metric{
 			metricType:  gaugeTypeName,
 			metricValue: strconv.FormatUint(m.Sys, 10),
@@ -125,6 +126,14 @@ func collectMetrics() {
 		newMetrics["RandomValue"] = metric{
 			metricType:  gaugeTypeName,
 			metricValue: strconv.FormatFloat(rand.Float64(), 'f', -1, 64),
+		}
+		newMetrics["NumForcedGC"] = metric{
+			metricType:  gaugeTypeName,
+			metricValue: strconv.FormatUint(uint64(m.NumForcedGC), 10),
+		}
+		newMetrics["NumGC"] = metric{
+			metricType:  gaugeTypeName,
+			metricValue: strconv.FormatUint(uint64(m.NumGC), 10),
 		}
 
 		metricsChan <- newMetrics
