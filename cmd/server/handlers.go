@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func getAllMetricsHandler(res http.ResponseWriter, req *http.Request) {
@@ -303,4 +305,18 @@ func getParsedMetricsUpdatingURLPathParams(path string) (*MetricsUpdatingURLPath
 	}
 
 	return &metricsUpdatingURLPathParams, nil
+}
+
+func pingDBHandler(res http.ResponseWriter, req *http.Request) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		fmt.Println(err)
+		res.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	res.WriteHeader(http.StatusOK)
 }

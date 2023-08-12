@@ -1,32 +1,40 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
+	"fmt"
 	"github.com/caarlos0/env/v9"
 	"github.com/go-chi/chi/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
 	"log"
 	"net/http"
 	"time"
 )
 
+var db *sql.DB
+
 var host string
 var storeInterval int64
 var storeFileName string
 var restoreStoreFromFile bool
+var databaseDsn string
 
 var (
 	hostFlag                 = flag.String("a", "localhost:8080", "IP address and port in 0.0.0.0:0000 format")
 	storeFileNameFlag        = flag.String("f", "/tmp/metrics-db.json", "Полное имя файла, куда сохраняются текущие значения")
 	storeIntervalFlag        = flag.Int64("i", 300, "Интервал времени в секундах, по истечении которого текущие показания сервера сохраняются на диск")
 	restoreStoreFromFileFlag = flag.Bool("r", true, "Определяет загружать или нет ранее сохранённые значения из указанного файла при старте сервера")
+	databaseDsnFlag          = flag.String("d", "host=localhost user=yandex password=yandex dbname=video sslmode=disable", "Строка подключения к базе данных")
 )
 
 type Config struct {
-	Host                 string `env:"ADDRESS"`
-	StoreInterval        int64  `env:"STORE_INTERVAL"`
-	StoreFileName        string `env:"FILE_STORAGE_PATH"`
-	RestoreStoreFromFile bool   `env:"RESTORE"`
+	Host                 *string `env:"ADDRESS"`
+	StoreInterval        *int64  `env:"STORE_INTERVAL"`
+	StoreFileName        *string `env:"FILE_STORAGE_PATH"`
+	RestoreStoreFromFile *bool   `env:"RESTORE"`
+	DatabaseDsn          *string `env:"DATABASE_DSN"`
 }
 
 func main() {
@@ -43,37 +51,41 @@ func main() {
 
 	flag.Parse()
 
-	cfg := Config{
-		StoreInterval: -1,
-	}
+	cfg := Config{}
 
 	err = env.Parse(&cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if cfg.Host != "" {
-		host = cfg.Host
+	if cfg.Host != nil {
+		host = *cfg.Host
 	} else {
 		host = *hostFlag
 	}
 
-	if cfg.StoreInterval != -1 {
-		storeInterval = cfg.StoreInterval
+	if cfg.StoreInterval != nil {
+		storeInterval = *cfg.StoreInterval
 	} else {
 		storeInterval = *storeIntervalFlag
 	}
 
-	if cfg.StoreFileName != "" {
-		storeFileName = cfg.StoreFileName
+	if cfg.StoreFileName != nil {
+		storeFileName = *cfg.StoreFileName
 	} else {
 		storeFileName = *storeFileNameFlag
 	}
 
-	if cfg.RestoreStoreFromFile {
-		restoreStoreFromFile = cfg.RestoreStoreFromFile
+	if cfg.RestoreStoreFromFile != nil {
+		restoreStoreFromFile = *cfg.RestoreStoreFromFile
 	} else {
 		restoreStoreFromFile = *restoreStoreFromFileFlag
+	}
+
+	if cfg.DatabaseDsn != nil {
+		databaseDsn = *cfg.DatabaseDsn
+	} else {
+		databaseDsn = *databaseDsnFlag
 	}
 
 	if restoreStoreFromFile && storeFileName != "" {
@@ -84,9 +96,19 @@ func main() {
 		go writeStoreToFileByInterval(storeInterval)
 	}
 
+	db, err = sql.Open("pgx", databaseDsn)
+
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+
+	defer db.Close()
+
 	router := chi.NewRouter()
 
 	router.Get("/", withLogging(gzipHandle(getAllMetricsHandler)))
+	router.Get("/ping", withLogging(pingDBHandler))
 	router.Post("/value/", withLogging(gzipHandle(getMetricValueHandlerByPOST)))
 	router.Get("/value/{metricType}/{metricName}", withLogging(gzipHandle(getMetricValueHandler)))
 
@@ -103,6 +125,7 @@ func main() {
 
 	err = s.ListenAndServe()
 	if err != nil {
+		fmt.Println(err)
 		panic(err)
 	}
 }
