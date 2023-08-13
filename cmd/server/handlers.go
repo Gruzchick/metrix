@@ -181,6 +181,61 @@ func updateMetricsByJSONHandler(res http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func updatesBatchOfMetricsByJSONHandler(res http.ResponseWriter, req *http.Request) {
+	var parsedBody []Metrics
+
+	var bodyBytes []byte
+
+	if strings.Contains(req.Header.Get("Content-Encoding"), "gzip") {
+		gz, err := gzip.NewReader(req.Body)
+		if err != nil {
+			http.Error(res, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		defer gz.Close()
+
+		bodyBytes, err = io.ReadAll(gz)
+		if err != nil {
+			fmt.Println(err.Error())
+			http.Error(res, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		var buf bytes.Buffer
+
+		_, err := buf.ReadFrom(req.Body)
+		if err != nil {
+			http.Error(res, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		bodyBytes = buf.Bytes()
+	}
+
+	if err := json.Unmarshal(bodyBytes, &parsedBody); err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err := storeBatchOfValue(&parsedBody)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	resp, err := json.Marshal(parsedBody[0])
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	res.Header().Set("content-type", "application/json")
+	res.WriteHeader(http.StatusOK)
+	res.Write(resp)
+}
+
 type MetricsUpdatingURLPathParams struct {
 	action      string
 	metricType  string

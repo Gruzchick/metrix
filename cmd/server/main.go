@@ -129,6 +129,7 @@ func main() {
 	router.Post("/value/", withLogging(gzipHandle(getMetricValueHandlerByPOST)))
 
 	router.Post("/update/", withLogging(gzipHandle(updateMetricsByJSONHandler)))
+	router.Post("/updates/", withLogging(gzipHandle(updatesBatchOfMetricsByJSONHandler)))
 	router.Post("/update/{metricType}/{metricName}/{metricValue}", withLogging(gzipHandle(updateMetricsHandler)))
 
 	s := &http.Server{

@@ -155,3 +155,112 @@ func getValueAsString(metricType string, name string) (string, error) {
 
 	return "0", errors.New("")
 }
+
+func storeBatchOfValue(metrics *[]Metrics) error {
+	if db != nil {
+
+		tx, err := db.Begin()
+
+		if err != nil {
+			return err
+		}
+
+		for _, metric := range *metrics {
+			switch {
+			case metric.MType == gaugeTypeName:
+				row := tx.QueryRow(`select id, value FROM gauges WHERE id = $1`, metric.ID)
+
+				var (
+					id    string
+					value float64
+				)
+
+				err := row.Scan(&id, &value)
+				if err != nil && err != sql.ErrNoRows {
+					fmt.Println(err)
+					tx.Rollback()
+					return err
+				}
+
+				if err == sql.ErrNoRows {
+					_, err := tx.Exec(`insert into gauges (id, value) values ($1, $2)`, metric.ID, *metric.Value)
+					if err != nil {
+						fmt.Println(err)
+						tx.Rollback()
+						return err
+					}
+				} else {
+					_, err := tx.Exec(`update gauges set id = $1, value=$2 where id=$1`, metric.ID, *metric.Value)
+					if err != nil {
+						fmt.Println(err)
+						tx.Rollback()
+						return err
+					}
+				}
+			case metric.MType == counterTypeName:
+				row := tx.QueryRow(`select id, value FROM counters WHERE id = $1`, metric.ID)
+
+				var (
+					id    string
+					value int64
+				)
+
+				err := row.Scan(&id, &value)
+				if err != nil && err != sql.ErrNoRows {
+					fmt.Println(err)
+					tx.Rollback()
+					return err
+				}
+
+				if err == sql.ErrNoRows {
+					_, err := tx.Exec(`insert into counters (id, value) values ($1, $2)`, metric.ID, *metric.Delta)
+					if err != nil {
+						fmt.Println(err)
+						tx.Rollback()
+						return err
+					}
+				} else {
+					_, err := tx.Exec(`update counters set id = $1, value=$2 where id=$1`, metric.ID, *metric.Delta+value)
+					if err != nil {
+						fmt.Println(err)
+						tx.Rollback()
+						return err
+					}
+					delta := *metric.Delta + value
+
+					metric.Delta = &delta
+				}
+
+			}
+		}
+
+		tx.Commit()
+
+		return nil
+	} else {
+		for _, metric := range *metrics {
+			switch {
+			case metric.MType == gaugeTypeName:
+
+				store.Gauges[metric.ID] = *metric.Value
+
+				value := store.Gauges[metric.ID]
+
+				metric.Value = &value
+			case metric.MType == counterTypeName:
+
+				store.Counters[metric.ID] = store.Counters[metric.ID] + *metric.Delta
+
+				delta := store.Counters[metric.ID]
+
+				metric.Delta = &delta
+			}
+		}
+
+		if storeInterval == 0 {
+			writeStoreToFileByInterval(storeInterval)
+		}
+
+		return nil
+	}
+}
