@@ -164,22 +164,7 @@ func updateMetricsByJSONHandler(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	switch {
-	case parsedBody.MType == gaugeTypeName:
-
-		store.Gauges[parsedBody.ID] = *parsedBody.Value
-
-		value := store.Gauges[parsedBody.ID]
-
-		parsedBody.Value = &value
-	case parsedBody.MType == counterTypeName:
-
-		store.Counters[parsedBody.ID] = store.Counters[parsedBody.ID] + *parsedBody.Delta
-
-		delta := store.Counters[parsedBody.ID]
-
-		parsedBody.Delta = &delta
-	}
+	storeValue(&parsedBody)
 
 	resp, err := json.Marshal(parsedBody)
 	if err != nil {
@@ -221,6 +206,8 @@ func updateMetricsHandler(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	var metrics Metrics
+
 	switch {
 	case parsedURLPathParams.metricType == gaugeTypeName:
 		metricValue, err := strconv.ParseFloat(parsedURLPathParams.metricValue, 64)
@@ -230,7 +217,13 @@ func updateMetricsHandler(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		store.Gauges[parsedURLPathParams.metricName] = metricValue
+		metrics = Metrics{
+			ID:    parsedURLPathParams.metricName,
+			MType: parsedURLPathParams.metricType,
+			Value: &metricValue,
+		}
+
+		storeValue(&metrics)
 	case parsedURLPathParams.metricType == counterTypeName:
 		metricValue, err := strconv.ParseInt(parsedURLPathParams.metricValue, 10, 64)
 
@@ -239,7 +232,13 @@ func updateMetricsHandler(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		store.Counters[parsedURLPathParams.metricName] = store.Counters[parsedURLPathParams.metricName] + metricValue
+		metrics = Metrics{
+			ID:    parsedURLPathParams.metricName,
+			MType: parsedURLPathParams.metricType,
+			Delta: &metricValue,
+		}
+
+		storeValue(&metrics)
 	}
 
 	res.Header().Set("content-type", "application/json")

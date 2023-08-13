@@ -26,7 +26,8 @@ var (
 	storeFileNameFlag        = flag.String("f", "/tmp/metrics-db.json", "Полное имя файла, куда сохраняются текущие значения")
 	storeIntervalFlag        = flag.Int64("i", 300, "Интервал времени в секундах, по истечении которого текущие показания сервера сохраняются на диск")
 	restoreStoreFromFileFlag = flag.Bool("r", true, "Определяет загружать или нет ранее сохранённые значения из указанного файла при старте сервера")
-	databaseDsnFlag          = flag.String("d", "host=localhost user=yandex password=yandex dbname=video sslmode=disable", "Строка подключения к базе данных")
+	//databaseDsnFlag          = flag.String("d", "host=localhost user=yandex password=yandex dbname=video sslmode=disable", "Строка подключения к базе данных")
+	databaseDsnFlag = flag.String("d", "", "Строка подключения к базе данных")
 )
 
 type Config struct {
@@ -96,21 +97,36 @@ func main() {
 		go writeStoreToFileByInterval(storeInterval)
 	}
 
-	db, err = sql.Open("pgx", databaseDsn)
+	if databaseDsn != "" {
 
-	if err != nil {
-		fmt.Println(err)
-		panic(err)
+		db, err = sql.Open("pgx", databaseDsn)
+
+		if err != nil {
+			fmt.Println(err)
+			panic(err)
+		}
+
+		defer db.Close()
+
+		_, err = db.Exec(`CREATE TABLE COUNTERS(id TEXT NOT NULL PRIMARY KEY, value BIGINT)`)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		_, err = db.Exec(`CREATE TABLE GAUGES(id TEXT NOT NULL PRIMARY KEY, value DOUBLE PRECISION)`)
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
-
-	defer db.Close()
 
 	router := chi.NewRouter()
 
-	router.Get("/", withLogging(gzipHandle(getAllMetricsHandler)))
 	router.Get("/ping", withLogging(pingDBHandler))
-	router.Post("/value/", withLogging(gzipHandle(getMetricValueHandlerByPOST)))
+
+	router.Get("/", withLogging(gzipHandle(getAllMetricsHandler)))
 	router.Get("/value/{metricType}/{metricName}", withLogging(gzipHandle(getMetricValueHandler)))
+
+	router.Post("/value/", withLogging(gzipHandle(getMetricValueHandlerByPOST)))
 
 	router.Post("/update/", withLogging(gzipHandle(updateMetricsByJSONHandler)))
 	router.Post("/update/{metricType}/{metricName}/{metricValue}", withLogging(gzipHandle(updateMetricsHandler)))
