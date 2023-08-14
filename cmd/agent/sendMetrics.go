@@ -81,7 +81,7 @@ func sendMetrics() {
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Content-Encoding", "gzip")
 
-		resp, err := client.Do(request)
+		resp, err := retryRequest(func() (*http.Response, error) { return client.Do(request) })
 		if err != nil {
 			fmt.Println(err)
 		} else {
@@ -91,4 +91,20 @@ func sendMetrics() {
 			}
 		}
 	}
+}
+
+func retryRequest(cb func() (*http.Response, error)) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+
+	for i := 1; i <= 5; i += 2 {
+		resp, err = cb()
+		if err != nil {
+			time.Sleep(time.Duration(i) * time.Second)
+		} else {
+			return resp, err
+		}
+	}
+
+	return resp, err
 }
