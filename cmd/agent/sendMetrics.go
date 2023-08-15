@@ -10,16 +10,11 @@ import (
 	"time"
 )
 
-type SendMetricsCounterRequest struct {
-	ID    string `json:"id"`
-	MType string `json:"type"`
-	Delta int64  `json:"delta"`
-}
-
-type SendMetricsGaugeRequest struct {
-	ID    string  `json:"id"`
-	MType string  `json:"type"`
-	Value float64 `json:"value"`
+type Metrics struct {
+	ID    string   `json:"id"`
+	MType string   `json:"type"`
+	Delta *int64   `json:"delta,omitempty"`
+	Value *float64 `json:"value,omitempty"`
 }
 
 func sendMetrics() {
@@ -30,68 +25,86 @@ func sendMetrics() {
 
 		metrics := <-metricsChan
 
+		var metricsArray = make([]Metrics, 0, len(metrics))
+
 		for k, v := range metrics {
 
-			var body interface{}
+			var body Metrics
 
 			switch {
 			case v.metricType == gaugeTypeName:
 				var value float64
 
 				value, _ = strconv.ParseFloat(v.metricValue, 64)
-				body = SendMetricsGaugeRequest{
+				body = Metrics{
 					ID:    k,
 					MType: v.metricType,
-					Value: value,
+					Value: &value,
 				}
+
+				metricsArray = append(metricsArray, body)
 			case v.metricType == counterTypeName:
 				var delta, _ = strconv.ParseInt(v.metricValue, 10, 64)
 
-				body = SendMetricsCounterRequest{
+				body = Metrics{
 					ID:    k,
 					MType: v.metricType,
-					Delta: delta,
+					Delta: &delta,
 				}
-			}
 
-			jsonBody, err := json.Marshal(body)
+				metricsArray = append(metricsArray, body)
+			}
+		}
+
+		jsonBody, err := json.Marshal(metricsArray)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		var compressedBodyBuffer bytes.Buffer
+
+		gz := gzip.NewWriter(&compressedBodyBuffer)
+
+		_, err = gz.Write(jsonBody)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		gz.Close()
+
+		request, err := http.NewRequest(http.MethodPost, "http://"+host+"/updates/", bytes.NewBuffer(compressedBodyBuffer.Bytes()))
+		if err != nil {
+			panic(err)
+		}
+
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Content-Encoding", "gzip")
+
+		resp, err := retryRequest(func() (*http.Response, error) { return client.Do(request) })
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			err = resp.Body.Close()
 			if err != nil {
 				fmt.Println(err)
-			}
-
-			fmt.Println("jsonBody.len ", len(jsonBody))
-
-			var compressedBodyBuffer bytes.Buffer
-
-			gz := gzip.NewWriter(&compressedBodyBuffer)
-
-			_, err = gz.Write(jsonBody)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-
-			gz.Close()
-
-			fmt.Println(len(compressedBodyBuffer.Bytes()))
-
-			request, err := http.NewRequest(http.MethodPost, "http://"+host+"/update/", bytes.NewBuffer(compressedBodyBuffer.Bytes()))
-			if err != nil {
-				panic(err)
-			}
-
-			request.Header.Set("Content-Type", "application/json")
-			request.Header.Set("Content-Encoding", "gzip")
-
-			resp, err := client.Do(request)
-			if err != nil {
-				fmt.Println(err)
-			} else {
-				err = resp.Body.Close()
-				if err != nil {
-					fmt.Println(err)
-				}
 			}
 		}
 	}
+}
+
+func retryRequest(cb func() (*http.Response, error)) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+
+	for i := 1; i <= 5; i += 2 {
+		resp, err = cb()
+		if err != nil {
+			time.Sleep(time.Duration(i) * time.Second)
+		} else {
+			return resp, err
+		}
+	}
+
+	return resp, err
 }

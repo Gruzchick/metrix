@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func getAllMetricsHandler(res http.ResponseWriter, req *http.Request) {
@@ -162,22 +164,7 @@ func updateMetricsByJSONHandler(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	switch {
-	case parsedBody.MType == gaugeTypeName:
-
-		store.Gauges[parsedBody.ID] = *parsedBody.Value
-
-		value := store.Gauges[parsedBody.ID]
-
-		parsedBody.Value = &value
-	case parsedBody.MType == counterTypeName:
-
-		store.Counters[parsedBody.ID] = store.Counters[parsedBody.ID] + *parsedBody.Delta
-
-		delta := store.Counters[parsedBody.ID]
-
-		parsedBody.Delta = &delta
-	}
+	storeValue(&parsedBody)
 
 	resp, err := json.Marshal(parsedBody)
 	if err != nil {
@@ -192,6 +179,61 @@ func updateMetricsByJSONHandler(res http.ResponseWriter, req *http.Request) {
 	if storeInterval == 0 {
 		writeStoreToFileByInterval(storeInterval)
 	}
+}
+
+func updatesBatchOfMetricsByJSONHandler(res http.ResponseWriter, req *http.Request) {
+	var parsedBody []Metrics
+
+	var bodyBytes []byte
+
+	if strings.Contains(req.Header.Get("Content-Encoding"), "gzip") {
+		gz, err := gzip.NewReader(req.Body)
+		if err != nil {
+			http.Error(res, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		defer gz.Close()
+
+		bodyBytes, err = io.ReadAll(gz)
+		if err != nil {
+			fmt.Println(err.Error())
+			http.Error(res, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		var buf bytes.Buffer
+
+		_, err := buf.ReadFrom(req.Body)
+		if err != nil {
+			http.Error(res, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		bodyBytes = buf.Bytes()
+	}
+
+	if err := json.Unmarshal(bodyBytes, &parsedBody); err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err := storeBatchOfValue(&parsedBody)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	resp, err := json.Marshal(parsedBody[0])
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	res.Header().Set("content-type", "application/json")
+	res.WriteHeader(http.StatusOK)
+	res.Write(resp)
 }
 
 type MetricsUpdatingURLPathParams struct {
@@ -219,6 +261,8 @@ func updateMetricsHandler(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	var metrics Metrics
+
 	switch {
 	case parsedURLPathParams.metricType == gaugeTypeName:
 		metricValue, err := strconv.ParseFloat(parsedURLPathParams.metricValue, 64)
@@ -228,7 +272,13 @@ func updateMetricsHandler(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		store.Gauges[parsedURLPathParams.metricName] = metricValue
+		metrics = Metrics{
+			ID:    parsedURLPathParams.metricName,
+			MType: parsedURLPathParams.metricType,
+			Value: &metricValue,
+		}
+
+		storeValue(&metrics)
 	case parsedURLPathParams.metricType == counterTypeName:
 		metricValue, err := strconv.ParseInt(parsedURLPathParams.metricValue, 10, 64)
 
@@ -237,7 +287,13 @@ func updateMetricsHandler(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		store.Counters[parsedURLPathParams.metricName] = store.Counters[parsedURLPathParams.metricName] + metricValue
+		metrics = Metrics{
+			ID:    parsedURLPathParams.metricName,
+			MType: parsedURLPathParams.metricType,
+			Delta: &metricValue,
+		}
+
+		storeValue(&metrics)
 	}
 
 	res.Header().Set("content-type", "application/json")
@@ -303,4 +359,18 @@ func getParsedMetricsUpdatingURLPathParams(path string) (*MetricsUpdatingURLPath
 	}
 
 	return &metricsUpdatingURLPathParams, nil
+}
+
+func pingDBHandler(res http.ResponseWriter, req *http.Request) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		fmt.Println(err)
+		res.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	res.WriteHeader(http.StatusOK)
 }
