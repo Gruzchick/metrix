@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -93,6 +96,13 @@ func getMetricValueHandlerByPOST(res http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	if hashKey != "" {
+		h := hmac.New(sha256.New, []byte(hashKey))
+		h.Write(resp)
+		hash := h.Sum(nil)
+		res.Header().Set("HashSHA256", hex.EncodeToString(hash))
 	}
 
 	res.Header().Set("content-type", "application/json")
@@ -213,6 +223,19 @@ func updatesBatchOfMetricsByJSONHandler(res http.ResponseWriter, req *http.Reque
 		bodyBytes = buf.Bytes()
 	}
 
+	requestHashFromHeader := req.Header.Get("HashSHA256")
+
+	if hashKey != "" {
+		h := hmac.New(sha256.New, []byte(hashKey))
+		h.Write(bodyBytes)
+		hash := h.Sum(nil)
+
+		if requestHashFromHeader != hex.EncodeToString(hash) {
+			http.Error(res, "Тело запроса не соответствует хешу", http.StatusBadRequest)
+			return
+		}
+	}
+
 	if err := json.Unmarshal(bodyBytes, &parsedBody); err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
@@ -229,6 +252,13 @@ func updatesBatchOfMetricsByJSONHandler(res http.ResponseWriter, req *http.Reque
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	if hashKey != "" {
+		h := hmac.New(sha256.New, []byte(hashKey))
+		h.Write(resp)
+		hash := h.Sum(nil)
+		res.Header().Set("HashSHA256", hex.EncodeToString(hash))
 	}
 
 	res.Header().Set("content-type", "application/json")
