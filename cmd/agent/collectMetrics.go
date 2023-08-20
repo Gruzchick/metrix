@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func collectMetrics() {
+func collectMetrics(metricsChan chan<- map[string]metric) {
 	for {
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
@@ -136,9 +136,11 @@ func collectMetrics() {
 			metricValue: strconv.FormatUint(uint64(m.NumGC), 10),
 		}
 
-		metricsChan <- newMetrics
+		select {
+		case metricsChan <- newMetrics:
+		default:
+		}
 
 		time.Sleep(time.Duration(pollInterval) * time.Second)
 	}
-
 }

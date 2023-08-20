@@ -170,7 +170,7 @@ func updateMetricsByJSONHandler(res http.ResponseWriter, req *http.Request) {
 	}
 
 	if parsedBody.ID == "" {
-		http.Error(res, "не указано имя метрики", http.StatusNotFound)
+		http.Error(res, "не указано имя метрики.", http.StatusNotFound)
 		return
 	}
 
@@ -231,7 +231,7 @@ func updatesBatchOfMetricsByJSONHandler(res http.ResponseWriter, req *http.Reque
 		hash := h.Sum(nil)
 
 		if requestHashFromHeader != hex.EncodeToString(hash) {
-			http.Error(res, "Тело запроса не соответствует хешу", http.StatusBadRequest)
+			http.Error(res, "Тело запроса не соответствует хешу в заголовку", http.StatusBadRequest)
 			return
 		}
 	}

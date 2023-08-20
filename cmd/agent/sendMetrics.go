@@ -20,13 +20,11 @@ type Metrics struct {
 	Value *float64 `json:"value,omitempty"`
 }
 
-func sendMetrics() {
+func sendMetrics(metricsChan <-chan map[string]metric) {
 	client := &http.Client{}
 
-	for {
+	for metrics := range metricsChan {
 		time.Sleep(time.Duration(reportInterval) * time.Second)
-
-		metrics := <-metricsChan
 
 		var metricsArray = make([]Metrics, 0, len(metrics))
 
