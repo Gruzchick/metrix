@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -80,6 +83,13 @@ func sendMetrics() {
 
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Content-Encoding", "gzip")
+
+		if hashKey != "" {
+			h := hmac.New(sha256.New, []byte(hashKey))
+			h.Write(jsonBody)
+			hash := h.Sum(nil)
+			request.Header.Set("HashSHA256", hex.EncodeToString(hash))
+		}
 
 		resp, err := retryRequest(func() (*http.Response, error) { return client.Do(request) })
 		if err != nil {
