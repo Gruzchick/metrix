@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,13 +20,11 @@ type Metrics struct {
 	Value *float64 `json:"value,omitempty"`
 }
 
-func sendMetrics() {
+func sendMetrics(metricsChan <-chan map[string]metric) {
 	client := &http.Client{}
 
-	for {
+	for metrics := range metricsChan {
 		time.Sleep(time.Duration(reportInterval) * time.Second)
-
-		metrics := <-metricsChan
 
 		var metricsArray = make([]Metrics, 0, len(metrics))
 
@@ -80,6 +81,13 @@ func sendMetrics() {
 
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Content-Encoding", "gzip")
+
+		if hashKey != "" {
+			h := hmac.New(sha256.New, []byte(hashKey))
+			h.Write(jsonBody)
+			hash := h.Sum(nil)
+			request.Header.Set("HashSHA256", hex.EncodeToString(hash))
+		}
 
 		resp, err := retryRequest(func() (*http.Response, error) { return client.Do(request) })
 		if err != nil {

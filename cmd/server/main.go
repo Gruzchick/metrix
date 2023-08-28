@@ -20,6 +20,7 @@ var storeInterval int64
 var storeFileName string
 var restoreStoreFromFile bool
 var databaseDsn string
+var hashKey string
 
 var (
 	hostFlag                 = flag.String("a", "localhost:8080", "IP address and port in 0.0.0.0:0000 format")
@@ -28,6 +29,7 @@ var (
 	restoreStoreFromFileFlag = flag.Bool("r", true, "Определяет загружать или нет ранее сохранённые значения из указанного файла при старте сервера")
 	//databaseDsnFlag          = flag.String("d", "host=localhost user=yandex password=yandex dbname=video sslmode=disable", "Строка подключения к базе данных")
 	databaseDsnFlag = flag.String("d", "", "Строка подключения к базе данных")
+	hashKeyFlag     = flag.String("k", "", "Ключ для вычисления хеша")
 )
 
 type Config struct {
@@ -36,6 +38,7 @@ type Config struct {
 	StoreFileName        *string `env:"FILE_STORAGE_PATH"`
 	RestoreStoreFromFile *bool   `env:"RESTORE"`
 	DatabaseDsn          *string `env:"DATABASE_DSN"`
+	HashKey              *string `env:"KEY"`
 }
 
 func main() {
@@ -96,6 +99,14 @@ func main() {
 	if storeInterval != 0 {
 		go writeStoreToFileByInterval(storeInterval)
 	}
+
+	if cfg.HashKey != nil {
+		hashKey = *cfg.HashKey
+	} else {
+		hashKey = *hashKeyFlag
+	}
+
+	fmt.Println("hashKey", hashKey)
 
 	if databaseDsn != "" {
 
